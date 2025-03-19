@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Search & ATS Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .search-container {
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: box-shadow 0.3s ease;
+        }
+        .search-container:hover {
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        }
+        .resume-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .resume-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .tabs {
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .tab {
+            transition: all 0.3s ease;
+        }
+        .tab.active {
+            border-bottom: 2px solid #3b82f6;
+            color: #3b82f6;
+        }
+        #results-grid, #ats-results-grid {
+            display: none;
+        }
+        #results-grid.show, #ats-results-grid.show {
+            display: grid;
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen p-4 md:p-8">
+        <!-- Navigation Tabs -->
+        <div class="tabs flex justify-center space-x-8 mb-8">
+            <button class="tab active px-4 py-2 font-semibold" onclick="switchTab('search')">Resume Search</button>
+            <button class="tab px-4 py-2 font-semibold" onclick="switchTab('ats')">ATS Calculator</button>
+        </div>
+
+        <!-- Search Section -->
+        <div id="search-section" class="max-w-4xl mx-auto">
+            <div class="search-container bg-white rounded-full p-4 mb-8">
+                <div class="flex items-center">
+                    <i class="bi bi-search text-gray-400 text-xl mr-3"></i>
+                    <input type="text" id="search-input" placeholder="Search resumes by skills, job titles, or qualifications..." 
+                           class="w-full outline-none text-lg">
+                </div>
+            </div>
+            <div id="results-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </div>
+
+        <!-- ATS Calculator Section -->
+        <div id="ats-section" class="max-w-4xl mx-auto hidden">
+            <div class="bg-white rounded-lg p-6 mb-8">
+                <h2 class="text-xl font-semibold mb-4">Job Description Analysis</h2>
+                <textarea id="job-description" rows="6" 
+                          class="w-full p-4 border rounded-lg mb-4 resize-none"
+                          placeholder="Paste the job description here..."></textarea>
+                <button onclick="calculateATS()" 
+                        class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                    Analyze Resumes
+                </button>
+            </div>
+            <div id="ats-results-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </div>
+    </div>
+
+    <script>
+        let activeTab = 'search';
+
+        function switchTab(tab) {
+            // Update tab styles
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Show/hide sections
+            document.getElementById('search-section').classList.toggle('hidden', tab !== 'search');
+            document.getElementById('ats-section').classList.toggle('hidden', tab !== 'ats');
+
+            activeTab = tab;
+        }
+
+        function createResumeCard(resume, isATS = false) {
+            const card = document.createElement('div');
+            card.className = 'resume-card bg-white rounded-lg p-6 shadow-sm';
+            
+            if (isATS) {
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="font-semibold text-lg">${resume.userId}</h3>
+                        <span class="bg-blue-100 text-blue-800 font-medium px-3 py-1 rounded-full">
+                            Score: ${resume.atsScore}%
+                        </span>
+                    </div>
+                    <div class="space-y-2">
+                        <p class="text-sm"><span class="font-medium">Skills Match:</span> ${resume.details.skillsMatch}%</p>
+                        <p class="text-sm"><span class="font-medium">Experience Match:</span> ${resume.details.experienceMatch}%</p>
+                        <p class="text-sm"><span class="font-medium">Education Match:</span> ${resume.details.educationMatch}%</p>
+                        <p class="text-sm"><span class="font-medium">Keyword Match:</span> ${resume.details.keywordMatch}%</p>
+                    </div>
+                `;
+            } else {
+                card.innerHTML = `
+                    <h3 class="font-semibold text-lg mb-3">${resume.skills ? `Skills: ${resume.skills.join(', ')}` : ''}</h3>
+                    <p class="text-sm text-gray-600 mb-2">${resume.about?.description || ''}</p>
+                    <div class="text-sm">
+                        <p><span class="font-medium">Qualification:</span> ${resume.Qualification?.[0]?.Degree || 'N/A'}</p>
+                        <p><span class="font-medium">Experience:</span> ${resume.workExperience?.[0]?.jobTitle || 'N/A'}</p>
+                    </div>
+                `;
+            }
+            return card;
+        }
+
+        async function searchResumes() {
+            const keyword = document.getElementById('search-input').value.trim();
+            if (!keyword) return;
+
+            try {
+                const response = await fetch(`/api/resume/create/search?keyword=${encodeURIComponent(keyword)}`);
+                const data = await response.json();
+
+                const resultsGrid = document.getElementById('results-grid');
+                resultsGrid.innerHTML = '';
+                resultsGrid.classList.add('show');
+
+                if (data.results && data.results.length > 0) {
+                    data.results.forEach(resume => {
+                        resultsGrid.appendChild(createResumeCard(resume));
+                    });
+                } else {
+                    resultsGrid.innerHTML = '<p class="col-span-full text-center text-gray-500">No resumes found matching your search.</p>';
+                }
+            } catch (error) {
+                console.error('Error searching resumes:', error);
+            }
+        }
+
+        async function calculateATS() {
+            const jobDescription = document.getElementById('job-description').value.trim();
+            if (!jobDescription) return;
+
+            try {
+                const response = await fetch('/api/resume/create/calculate-ats', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ jobDescription }),
+                });
+                const data = await response.json();
+
+                const resultsGrid = document.getElementById('ats-results-grid');
+                resultsGrid.innerHTML = '';
+                resultsGrid.classList.add('show');
+
+                if (data.atsResults && data.atsResults.length > 0) {
+                    data.atsResults
+                        .sort((a, b) => b.atsScore - a.atsScore)
+                        .forEach(result => {
+                            resultsGrid.appendChild(createResumeCard(result, true));
+                        });
+                } else {
+                    resultsGrid.innerHTML = '<p class="col-span-full text-center text-gray-500">No matching resumes found.</p>';
+                }
+            } catch (error) {
+                console.error('Error calculating ATS scores:', error);
+            }
+        }
+
+        // Add event listener for search input
+        document.getElementById('search-input').addEventListener('input', debounce(searchResumes, 500));
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
